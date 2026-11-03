@@ -21,8 +21,8 @@ something, or is it generic mush?*
 
 - [Next.js 16](https://nextjs.org/) (App Router, TypeScript)
 - [Tailwind CSS 4](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/)
-- [z-ai-web-dev-sdk](https://www.npmjs.com/package/z-ai-web-dev-sdk)
-  for the LLM (chat completions + vision)
+- [DeepSeek API](https://api-docs.deepseek.com) for the LLM
+  (OpenAI-compatible chat completions + vision via `deepseek-flash`)
 
 ## Getting started (local dev)
 
@@ -31,12 +31,10 @@ something, or is it generic mush?*
 npm install
 
 # 2. Configure the LLM
-#    The SDK reads a JSON config from one of:
-#      ./.z-ai-config            (project root — recommended)
-#      ~/.z-ai-config
-#      /etc/.z-ai-config
-#    See .env.example for the shape. The simplest approach for local
-#    dev: create ./.z-ai-config with your credentials.
+#    Create a .env file (or export to your shell):
+#      DEEPSEEK_API_KEY=sk-...
+#    Get a key at https://platform.deepseek.com.
+#    See .env.example for the optional overrides (base URL, model).
 
 # 3. Run the dev server
 npm run dev
@@ -53,12 +51,9 @@ web service in one click.
 1. Push this repo to GitHub.
 2. On Render, go to **New > Blueprint** and select the repo.
 3. Render reads `render.yaml` and pre-fills the service config.
-4. Fill in the four `Z_AI_*` env vars when prompted (Render marks
-   them `sync: false` so you enter them in the dashboard):
-   - `Z_AI_BASE_URL` — the Z.ai API base URL (must end in `/v1`)
-   - `Z_AI_API_KEY` — your Z.ai API key
-   - `Z_AI_CHAT_ID` — optional
-   - `Z_AI_USER_ID` — optional
+4. Fill in `DEEPSEEK_API_KEY` when prompted (Render marks it
+   `sync: false` so you enter it in the dashboard). Get one at
+   https://platform.deepseek.com.
 5. Click **Apply**. Render builds and deploys.
 
 ### Manual setup (if you'd rather configure by hand)
@@ -69,18 +64,15 @@ web service in one click.
    - **Build command**: `npm install && npm run build`
    - **Start command**: `npm start`
    - **Plan**: Free (or paid if you need more)
-3. Under **Environment**, add the same `Z_AI_*` env vars above.
+3. Under **Environment**, add `DEEPSEEK_API_KEY`.
 4. **Create Web Service**.
 
-### How the SDK auth works on Render
+### How the LLM auth works
 
-The `z-ai-web-dev-sdk` reads credentials from a JSON file on disk
-(`.z-ai-config`), not env vars. To bridge this on hosts where you
-can't commit a config file, `npm run build` runs a `prebuild` step
-(`scripts/write-zai-config.mjs`) that reads `Z_AI_*` env vars and
-writes `.z-ai-config` into the build output, where the SDK finds
-it at runtime. In local dev (no env vars set), the prebuild is a
-no-op and the SDK falls back to `~/.z-ai-config` or `/etc/.z-ai-config`.
+The app calls DeepSeek directly via `fetch` (see `src/lib/deepseek.ts`)
+using the OpenAI-compatible chat completions endpoint. The API key
+is read from the `DEEPSEEK_API_KEY` env var. No SDK config file, no
+build-time wiring — just one env var.
 
 ## How it works
 
@@ -120,6 +112,7 @@ src/
     profiles.ts            # 5 hardcoded profiles + voice anchors
     rubric.ts              # 5-field rubric + prompt fragments
     page-fetch.ts          # server-side URL fetcher (strip HTML → text)
+    deepseek.ts            # OpenAI-compatible DeepSeek client (chat + vision)
   components/ui/           # shadcn/ui components
 ```
 

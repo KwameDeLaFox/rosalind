@@ -4,8 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
-    "prebuild": "node scripts/write-zai-config.mjs",
-    "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && cp -f .z-ai-config .next/standalone/ 2>/dev/null || true",
+    "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
     "start": "node .next/standalone/server.js",
     "lint": "eslint ."
   },

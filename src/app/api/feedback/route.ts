@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
 import {
   PROFILES,
   getProfileById,
@@ -9,6 +8,12 @@ import {
 } from "@/lib/profiles";
 import { RUBRIC, type RubricFeedback } from "@/lib/rubric";
 import { fetchPageText, FetchPageError } from "@/lib/page-fetch";
+import {
+  chatCompletion,
+  DeepSeekError,
+  getDeepSeekConfig,
+  type ChatMessage,
+} from "@/lib/deepseek";
 
 export const runtime = "nodejs";
 
@@ -180,14 +185,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // One LLM call per profile, in parallel. Each is constrained to the rubric.
-  let zai: Awaited<ReturnType<typeof ZAI.create>>;
+  // Validate DeepSeek credentials early so we surface a clear error
+  // before the stream opens, rather than failing per-profile.
   try {
-    zai = await ZAI.create();
+    getDeepSeekConfig();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
-      { error: `Could not initialise the LLM: ${msg}` },
+      { error: `LLM not configured: ${msg}` },
       { status: 500 },
     );
   }
@@ -231,11 +236,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         // making the overall run feel slow.
         if (i > 0) await sleep(300);
         try {
-          const feedback = await getFeedbackForProfile(
-            zai,
-            profile,
-            pageContent,
-          );
+          const feedback = await getFeedbackForProfile(profile, pageContent);
           send("profile_done", {
             profile_id: profile.id,
             profile_name: profile.name,
@@ -278,10 +279,10 @@ function sleep(ms: number): Promise<void> {
 }
 
 // Retry a call when the LLM provider returns 429 (Too Many Requests).
-// The sandbox LLM is shared and rate-limited per client; 429s happen
-// even with sequential calls. Exponential backoff: 1s, 2s, 4s. Only
-// retries on 429 — other errors (parse failures, network) surface
-// immediately so the user knows they're real.
+// DeepSeek rate-limits per API key; even with sequential calls,
+// occasional 429s happen. Exponential backoff: 1s, 2s, 4s. Only
+// retries on 429 — other errors (parse failures, network, auth)
+// surface immediately so the user knows they're real.
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   maxRetries: number,
@@ -293,8 +294,9 @@ async function retryWithBackoff<T>(
       return await fn();
     } catch (err) {
       lastError = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      const isRateLimit = msg.includes("429") || /too many requests/i.test(msg);
+      const isRateLimit =
+        (err instanceof DeepSeekError && err.isRateLimit) ||
+        (err instanceof Error && /429|too many requests/i.test(err.message));
       if (!isRateLimit || attempt === maxRetries) {
         throw err;
       }
@@ -326,7 +328,6 @@ function formatFetchedPage(p: {
 }
 
 async function describeScreenshot(dataUrl: string): Promise<string> {
-  const zai = await ZAI.create();
   const prompt = [
     "You are extracting the visible content of a single web page from a screenshot.",
     "Return ONLY the following, as plain text (no commentary):",
@@ -340,7 +341,7 @@ async function describeScreenshot(dataUrl: string): Promise<string> {
     "If something is not visible, omit it. Do not invent. Do not interpret.",
   ].join(" ");
 
-  const response = await zai.chat.completions.createVision({
+  const response = await chatCompletion({
     messages: [
       {
         role: "user",
@@ -350,7 +351,6 @@ async function describeScreenshot(dataUrl: string): Promise<string> {
         ],
       },
     ],
-    thinking: { type: "disabled" },
   });
 
   const text = response.choices?.[0]?.message?.content?.trim() ?? "";
@@ -359,33 +359,30 @@ async function describeScreenshot(dataUrl: string): Promise<string> {
 }
 
 async function getFeedbackForProfile(
-  zai: Awaited<ReturnType<typeof ZAI.create>>,
   profile: (typeof PROFILES)[number],
   pageContent: string,
 ): Promise<RubricFeedback> {
   const systemPrompt = buildSystemPrompt(profile);
   const userPrompt = buildUserPrompt(pageContent);
 
-  // Retry on 429 with exponential backoff. The sandbox LLM provider
-  // rate-limits per client; even with sequential calls, occasional
-  // 429s happen. Most clear within a couple of seconds.
+  // Retry on 429 with exponential backoff. DeepSeek rate-limits per
+  // API key; even with sequential calls, occasional 429s happen.
   // Schedule: 1s, 2s, 4s — up to 3 retries on top of the initial try.
   const maxRetries = 3;
   const baseDelayMs = 1000;
 
-  let response: Awaited<ReturnType<typeof zai.chat.completions.create>>;
+  let response;
   try {
     response = await retryWithBackoff(
       () =>
-        zai.chat.completions.create({
+        chatCompletion({
           messages: [
-            { role: "assistant", content: systemPrompt },
+            { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
           ],
           // Low temperature for consistency across re-runs of the same page.
           // PRD §9: "Temperature low-ish for consistency."
           temperature: 0.3,
-          thinking: { type: "disabled" },
         }),
       maxRetries,
       baseDelayMs,
