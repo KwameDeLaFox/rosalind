@@ -105,9 +105,9 @@ export default function Home() {
   const [gutChecks, setGutChecks] = useState<Record<string, GutMark>>({});
   const [closingAnswer, setClosingAnswer] = useState("");
   const [copied, setCopied] = useState(false);
-
-  // Track which run is the active streaming one, for the progress indicator.
-  const activeRunIdRef = useRef<number | null>(null);
+  // Track which run is the active streaming one, for the progress
+  // indicator. State (not a ref) so the UI re-renders when it changes.
+  const [activeRunId, setActiveRunId] = useState<number | null>(null);
 
   const selectedCount = selected.size;
   const canSubmit =
@@ -117,7 +117,7 @@ export default function Home() {
     hasInputForMode(inputMode, urlValue, textValue, imageDataUrl);
 
   const hasResults = runs.length > 0;
-  const activeRun = runs.find((r) => r.id === activeRunIdRef.current) ?? null;
+  const activeRun = runs.find((r) => r.id === activeRunId) ?? null;
 
   const handleFile = useCallback((file: File | null) => {
     if (!file) return;
@@ -166,7 +166,7 @@ export default function Home() {
     setError(null);
 
     const runId = ++runIdCounter;
-    activeRunIdRef.current = runId;
+    setActiveRunId(runId);
 
     // Pre-register the run with empty results, so the disclaimer + page
     // summary + placeholders appear immediately. Results fill in as
@@ -299,7 +299,7 @@ export default function Home() {
       updateRun(runId, (r) => ({ ...r, isStreaming: false }));
     } finally {
       setLoading(false);
-      activeRunIdRef.current = null;
+      setActiveRunId(null);
     }
   }, [inputMode, urlValue, textValue, imageDataUrl, selected, updateRun]);
 
