@@ -1,0 +1,31 @@
+# Render Blueprint for Synthetic Page Feedback
+# https://render.com/docs/blueprint-spec
+# This file lets you create the web service in one click from the
+# Render dashboard: New > Blueprint > pick this repo.
+
+services:
+  - type: web
+    name: synthetic-page-feedback
+    runtime: node
+    plan: free
+    region: oregon  # change if you prefer a different region
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/feedback
+    autoDeploy: true
+    branch: main
+    envVars:
+      # The z-ai-web-dev-sdk reads a JSON config from .z-ai-config in
+      # the project root. On Render, you can't write to the filesystem
+      # at build time reliably, so we set env vars and have the SDK
+      # init read them — see src/lib/zai.ts for the wiring.
+      - key: Z_AI_BASE_URL
+        sync: false  # you'll fill this in on the Render dashboard
+      - key: Z_AI_API_KEY
+        sync: false
+      - key: Z_AI_CHAT_ID
+        sync: false
+      - key: Z_AI_USER_ID
+        sync: false
+      - key: NODE_ENV
+        value: production

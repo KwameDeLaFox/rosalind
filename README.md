@@ -24,23 +24,63 @@ something, or is it generic mush?*
 - [z-ai-web-dev-sdk](https://www.npmjs.com/package/z-ai-web-dev-sdk)
   for the LLM (chat completions + vision)
 
-## Getting started
+## Getting started (local dev)
 
 ```bash
 # 1. Install dependencies
-bun install   # or: npm install
+npm install
 
 # 2. Configure the LLM
 #    The SDK reads a JSON config from one of:
-#      ./.z-ai-config
+#      ./.z-ai-config            (project root — recommended)
 #      ~/.z-ai-config
 #      /etc/.z-ai-config
-#    See .env.example for the shape.
+#    See .env.example for the shape. The simplest approach for local
+#    dev: create ./.z-ai-config with your credentials.
 
 # 3. Run the dev server
-bun run dev   # or: npm run dev
+npm run dev
 # Open http://localhost:3000
 ```
+
+## Deploy to Render
+
+The repo includes a `render.yaml` Blueprint, so you can create the
+web service in one click.
+
+### One-click via Blueprint
+
+1. Push this repo to GitHub.
+2. On Render, go to **New > Blueprint** and select the repo.
+3. Render reads `render.yaml` and pre-fills the service config.
+4. Fill in the four `Z_AI_*` env vars when prompted (Render marks
+   them `sync: false` so you enter them in the dashboard):
+   - `Z_AI_BASE_URL` — the Z.ai API base URL (must end in `/v1`)
+   - `Z_AI_API_KEY` — your Z.ai API key
+   - `Z_AI_CHAT_ID` — optional
+   - `Z_AI_USER_ID` — optional
+5. Click **Apply**. Render builds and deploys.
+
+### Manual setup (if you'd rather configure by hand)
+
+1. On Render, **New > Web Service**, connect your GitHub repo.
+2. Settings:
+   - **Runtime**: Node
+   - **Build command**: `npm install && npm run build`
+   - **Start command**: `npm start`
+   - **Plan**: Free (or paid if you need more)
+3. Under **Environment**, add the same `Z_AI_*` env vars above.
+4. **Create Web Service**.
+
+### How the SDK auth works on Render
+
+The `z-ai-web-dev-sdk` reads credentials from a JSON file on disk
+(`.z-ai-config`), not env vars. To bridge this on hosts where you
+can't commit a config file, `npm run build` runs a `prebuild` step
+(`scripts/write-zai-config.mjs`) that reads `Z_AI_*` env vars and
+writes `.z-ai-config` into the build output, where the SDK finds
+it at runtime. In local dev (no env vars set), the prebuild is a
+no-op and the SDK falls back to `~/.z-ai-config` or `/etc/.z-ai-config`.
 
 ## How it works
 
